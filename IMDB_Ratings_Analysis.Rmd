@@ -1,0 +1,363 @@
+---
+title: "Final Project 363"
+author: "Big Backers"
+date: "2024-05-02"
+output: html_document
+---
+
+rm(list=ls())
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+### Function by JDRS
+source("http://www.reuningscherer.net/s&ds230/Rfuncs/regJDRS.txt")
+```
+
+```{r}
+### Cleaning Step to remove empty rows and convert variables into proper format
+
+### Downloaded from: 
+### https://www.kaggle.com/datasets/harshitshankhdhar/imdb-dataset-of-top-1000-movies-and-tv-shows
+
+initial <- read.csv('imdb_top_1000.csv')
+
+imdb <- subset(initial, select = -c(Poster_Link, Overview, Director, Star1, Star2, Star3, Star4, Genre))
+
+###Fixing Genre Issues
+genres_split <- strsplit(as.character(initial$Genre), ",")
+first_genre <- sapply(genres_split, function(x) x[1])
+imdb$First_Genre <- first_genre
+
+### Fixing Numeric Issues
+numbers_gross <- as.numeric(gsub(",", "", imdb$Gross))
+runtime_numeric <- as.numeric(gsub("[^0-9]", "", imdb$Runtime))
+year_numeric <- as.numeric(gsub("[^0-9]", "", imdb$Released_Year))
+imdb$Gross <- numbers_gross
+imdb$Runtime <- runtime_numeric
+imdb$Released_Year <- year_numeric
+
+imdb <- na.omit(imdb)
+attach(imdb)
+
+
+western_thriller <- data.frame(subset(imdb, First_Genre == "Western"), subset(imdb, First_Genre == "Thriller"))
+
+drama <- subset(imdb, First_Genre == "Drama")
+action <- subset(imdb, First_Genre == "Action")
+
+drama_action <- rbind(drama, action)
+
+
+```
+
+```{r}
+### Basic Information on Data
+
+names(imdb)
+summary(imdb)
+```
+
+```{r}
+### Cursory Look and BoxPlots
+
+options(scipen = 2)
+
+par(mar = c(8, 6, 4, 2) + 0.1)
+par(mgp = c(5, 1, 0))
+boxplot(Gross ~ First_Genre,
+        col = "lightgreen",
+        main = "BoxPlots of Gross by Genre",
+        xlab = "Genre Name",
+        ylab = "Gross ($)",
+        cex.axis = 0.8,
+        las = 2)
+mean_gross <- tapply(Gross, First_Genre, mean)
+points(mean_gross, col = "red", pch = 19, cex = 1.2)
+text(x = 1:length(unique(First_Genre)), y = mean_gross + 0.2, 
+     labels = format(round(mean_gross, 0), scientific = TRUE, digits = 2), cex = 0.7)
+```
+
+```{r}
+### LM
+
+library(car)
+ratings_lm <- lm(IMDB_Rating~No_of_Votes, data = imdb)
+Anova(ratings_lm, type = "III")
+summary(ratings_lm)
+
+plot(IMDB_Rating ~ No_of_Votes, 
+     pch=19,
+     main = "IMDB Rating by Number of Votes",
+     xlab = "Votes",
+     ylab = "Rating",
+     data = imdb,
+     col = "lightgreen")
+coefs <- coef(ratings_lm)
+abline(a = coefs[1], b = coefs[2], col = "darkred", lwd = 3)
+```
+
+
+```{r}
+### Normal Quantile Plot
+
+library(car)
+library(MASS)
+
+qqPlot(imdb$IMDB_Rating, col = 'red', main = "Normal Quantile Plot of IMDB Rating", pch = 19)
+qqPlot(imdb$Meta_score, col = 'red', main = "Normal Quantile Plot of Meta Score", pch = 19)
+qqPlot(imdb$Gross, col = 'red', main = "Normal Quantile Plot of Gross", pch = 19)
+
+IMDBrating_lm <- lm(IMDB_Rating~First_Genre)
+Metascore_lm <- lm(Meta_score~First_Genre)
+gross_lm <- lm(Gross~First_Genre)
+
+Anova(IMDBrating_lm)
+Anova(Metascore_lm)
+Anova(gross_lm)
+
+ratingT <- boxCox(IMDBrating_lm)
+metascoreT <- boxCox(Metascore_lm)
+imdb$logGross <- log(imdb$Gross)
+#grossT <- boxCox(gross_lm)
+
+ratingT$x[which.max(ratingT$y)]
+metascoreT$x[which.max(metascoreT$y)]
+#grossT$x[which.max(grossT$y)]
+
+imdb$transIMDBrating <- IMDB_Rating^(-2)
+imdb$transMetaScore <- Meta_score^2
+imdb$logGross <- imdb$logGross
+
+attach(imdb)
+
+boxplot(imdb$logGross ~ First_Genre,
+        col = "yellow",
+        main = "BoxPlots of Transformed Gross by Genre",
+        xlab = "Genre Name",
+        ylab = "Transofrmed Gross ($)",
+        cex.axis = 0.8,
+        las = 2)
+mean_gross <- tapply(imdb$logGross, First_Genre, mean)
+points(mean_gross, col = "red", pch = 19, cex = 1.2)
+text(x = 1:length(unique(First_Genre)), y = mean_gross + 0.2, 
+     labels = format(round(mean_gross, 0), scientific = TRUE, digits = 2), cex = 0.7)
+
+aov1 <- aov(transIMDBrating ~ First_Genre)
+Anova(aov1)
+
+aov2 <- aov(transMetaScore ~ First_Genre)
+Anova(aov2)
+
+aov3 <- aov(imdb$logGross ~ First_Genre)
+Anova(aov3)
+
+myResPlots2(aov1, label = "Transformed IMDB Rating")
+myResPlots2(aov2, label = "Transformed Meta Score")
+myResPlots2(aov3, label = "Transformed Gross")
+
+TukeyHSD(aov3)
+par(mar = c(5, 11, 2, 2))
+plot(TukeyHSD(aov1), las = 1)
+```
+
+```{r}
+# Create a histogram of the Gross variable for all movies
+hist(Gross, 
+     col = "lightgreen",
+     main = "Histogram of Gross Revenue for all Movies",
+     xlab = "Gross ($)")
+
+# Create a histogram of the Gross variable for action movies
+action_movies <- subset(imdb, First_Genre == "Action")
+hist(action_movies$Gross,
+     main = "Histogram of Gross for Action Movies",
+     xlab = "Gross ($)",
+     col = "lightblue")
+
+# Create a histogram of the Gross variable for crime movies
+crime_movies <- subset(imdb, First_Genre == "Crime")
+hist(crime_movies$Gross,
+     main = "Histogram of Gross for Crime Movies",
+     xlab = "Gross ($)",
+     col = "lightpink")
+
+hist(imdb$logGross, 
+     col = "green",
+     main = "Histogram of logGross Revenue for all Movies",
+     xlab = "Gross ($)")
+
+action_movies <- subset(imdb, First_Genre == "Action")
+hist(log(action_movies$Gross),
+     main = "Histogram of logGross for Action Movies",
+     xlab = "Gross ($)",
+     col = "blue")
+
+crime_movies <- subset(imdb, First_Genre == "Crime")
+hist(log(crime_movies$Gross),
+     main = "Histogram of logGross for Crime Movies",
+     xlab = "Gross ($)",
+     col = "lightpink")
+```
+
+```{r}
+### T-Test
+
+classify_genre <- function(genre) {
+  if ("Action" %in% genre) {
+    return("Action")
+  } else {
+    return("Other")
+  }
+}
+
+imdb$Action_v_Others <- sapply(imdb$First_Genre, classify_genre)
+attach(imdb)
+
+action_gross_lm <- lm(Gross~Action_v_Others)
+RuntimeT_Action <- boxCox(action_gross_lm)
+RuntimeT_Action$x[which.max(RuntimeT_Action$y)]
+
+test1 <- t.test(Gross ~ Action_v_Others, data = imdb, conf.level = 0.99, var.equal = FALSE)
+log_coefs <- log(test1$conf.int)
+```
+
+```{r}
+### Comparing SDs and also Gross by Genre
+
+imdb_sds <- tapply(Gross, First_Genre, sd)
+round(max(imdb_sds, na.rm = TRUE) / min(imdb_sds, na.rm = TRUE), 2)
+
+imdb_aov <- aov(Gross ~ First_Genre)
+summary(imdb_aov)
+```
+
+```{r}
+### MANOVA
+
+# Multivariate online function
+source("http://www.reuningscherer.net/Multivariate/R/CSQPlot.r.txt")
+
+imdbMAOV <- lm(cbind(log(Gross), transIMDBrating, transMetaScore) ~ First_Genre)
+summary(Anova(imdbMAOV, type = 3), univariate = T)
+```
+
+```{r}
+### Bootstrap
+
+movie_null_mean <- NULL
+
+for (i in 1:10000) {
+  action_gross <- sample(Gross[imdb$Action_v_Others == "Action"], 
+                  sum(imdb$Action_v_Others == "Action"), replace = TRUE)
+  other_gross <- sample(Gross[imdb$Action_v_Others == "Other"], 
+                  sum(imdb$Action_v_Others == "Other"), replace = TRUE)
+  movie_null_mean[i] <- mean(log(action_gross)) - mean(log(other_gross))
+}
+
+#Get bootstrap quantiles (99%)
+ci <- quantile(movie_null_mean, c(0.005, 0.995))
+round(ci, 2)
+
+hist(movie_null_mean, col = "lightblue", main = "Bootstrap Distribution of Mean logGross between Action and Other Genres", ylab = "Frequency", xlab = "Difference of Mean logGross")
+
+
+#Add lines to histogram for CI's
+abline(v = ci, lwd=3, col="red")
+abline(v = test1$conf.int, lwd = 3, col = "green", lty = 2)
+legend("topleft",
+c("Original CI (Not Shown, Too Big)", "Boot CI"),
+lwd = 3,
+col = c("green", "red"))
+
+```
+
+```{r}
+### Permutation 
+set.seed(230)
+
+diffvals <- rep(NA, 10000)
+for (i in 1:10000) {
+  fakeAction <- sample(imdb$Action_v_Others)
+  diffvals[i] <- median(log(Gross)[fakeAction == "Action"]) -
+  median(log(Gross)[fakeAction == "Other"])
+}
+actualDiff <- median(log(Gross)[imdb$Action_v_Others == "Action"]) - median(log(Gross)[imdb$Action_v_Others == "Other"])
+
+#Make histogram of permuted median differences
+hist(diffvals,
+  col = "yellow",
+  main = "Permuted Sample Median Diff in Changes",
+  xlab = "logGross",
+  xlim = c(-1,2),
+  breaks = 50)
+abline(v = actualDiff, col = "blue", lwd = 3)
+text(actualDiff-.05, 600, paste("Actual Diff in Medians =", round(actualDiff,
+2)), srt = 90, cex = 0.9)
+
+mean(abs(diffvals) >= abs(actualDiff))
+
+(p_value <- mean(abs(diffvals) >= abs(actualDiff)))
+p_value
+```
+
+```{r}
+### Multiple Regression
+
+m2 <- lm(log(Gross) + transMetaScore ~ First_Genre, data = imdb)
+summary(m2)
+coefs <- coef(m2)
+#Pay CLOSE attention to which coefficient is which!!!!
+log(coefs)
+
+par(mar = c(8, 6, 4, 2) + 0.1)
+plot(log(Gross) ~ transMetaScore, data = imdb, col = factor(First_Genre), pch = 16, cex = .5)
+legend("topleft", col = 1:5, legend = levels(factor(imdb$First_Genre)), pch = 16, cex = 0.6)
+abline(a = coefs[1], b = coefs[2], col = "black", lwd = 3)
+for (i in 3:13){
+  abline(a = log(coefs[1]) + coefs[i], b = coefs[2], col = i-1, lwd = 3)
+}
+```
+
+```{r}
+### Correlation Plot
+
+library(olsrr)
+library(corrplot)
+
+imdb_continuous <- subset(imdb, select = c(Released_Year, Runtime, IMDB_Rating, Meta_score, Gross, logGross, transMetaScore, transIMDBrating))
+
+(movie_corr <- cor.mtest(imdb_continuous, conf.level = .99))
+
+corrplot.mixed(cor(imdb_continuous), lower.col = "black", 
+               upper = "ellipse", 
+               tl.col = "black", 
+               number.cex = .9,
+               tl.pos = "lt", 
+               p.mat = movie_corr$p, 
+               sig.level = .05)
+```
+
+```{r}
+### Interaction Plots
+
+par(pin = c(6, 6))  
+par(cex = 0.8)
+par(mar = c(6, 6, 4, 2))
+interaction.plot(IMDB_Rating, First_Genre, Gross,
+                 xlab = "IMDB Rating",
+                 ylab = "Gross",
+                 type = 'b', lwd = 3,
+                 col = c(1:7),
+                 main = "Interaction Plot of IMDb Rating, Gross, and Genre")
+
+
+interaction.plot(round(transIMDBrating, 3), First_Genre, transGross,
+                 xlab = "Transformed IMDB Rating",
+                 ylab = "LogGross",
+                 type = 'b', lwd = 3,
+                 col = c(1:7),
+                 main = "Interaction Plot of transIMDb Rating, transGross, and Genre")
+```
+
+
+
